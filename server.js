@@ -1,7 +1,7 @@
 import qs from 'qs'
 import {Server} from 'hapi'
 import React from 'react'
-import {createStore, applyMiddleware} from 'redux'
+import {createStore, combineReducers, applyMiddleware} from 'redux'
 import inert from 'inert'
 import {Provider} from 'react-redux'
 import {renderToString} from 'react-dom/server'
@@ -9,8 +9,9 @@ import {match, RouterContext} from 'react-router'
 import {notFound, internal} from 'boom'
 import thunkMiddleware from 'redux-thunk'
 import {map, compact, flow, get, flatMap, values} from 'lodash/fp'
+import {ReduxAsyncConnect, loadOnServer, reducer as reduxAsyncConnect} from 'redux-connect'
 
-import counterApp from './client/reducers'
+import counter from './client/reducers'
 import routes from './client/routes'
 
 const server = new Server()
@@ -36,36 +37,34 @@ server.register(inert, err => {
 })
 
 function handleRender (request, reply) {
-  match({routes, location: request.url}, (error, redirectLocation, renderProps) => {
+  match({routes, location: request.url}, (error, redirect, renderProps) => {
     if (error) {
       reply(internal(error))
-    } else if (redirectLocation) {
-      reply.redirect(302, redirectLocation.pathname + redirectLocation.search)
+    } else if (redirect) {
+      reply.redirect(302, redirect.pathname + redirect.search)
     } else if (renderProps) {
 
       const params = qs.parse(request.query)
-      const counter = parseInt(params.counter, 10) || 0
+      const counterValue = parseInt(params.counter, 10) || 0
 
-      const store = createStore(counterApp, {counter}, applyMiddleware(
-          thunkMiddleware, // lets us dispatch() functions
-      ))
+      const store = createStore(
+          combineReducers({counter, reduxAsyncConnect}),
+          {counter: counterValue},
+          applyMiddleware(
+              thunkMiddleware, // lets us dispatch() functions
+          ))
 
       console.log('fetching data')
 
-      Promise.all(flow(
-          map(get('fetchData')),
-          compact,
-          flatMap(values),
-          map(f => store.dispatch(f()))
-      )(renderProps.components)).then(() => {
+      loadOnServer({...renderProps, store}).then(() => {
         console.log('fetched data')
 
         // You can also check renderProps.components or renderProps.routes for
         // your "not found" component or route respectively, and send a 404 as
         // below, if you're using a catch-all route.
         const html = renderToString(
-            <Provider store={store}>
-              <RouterContext {...renderProps} />
+            <Provider store={store} key="provider">
+              <ReduxAsyncConnect {...renderProps} />
             </Provider>)
 
         const preloadedState = store.getState()

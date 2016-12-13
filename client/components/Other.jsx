@@ -1,20 +1,22 @@
 import React, {Component, PropTypes as T} from 'react'
-import {connect} from 'react-redux'
-import {callApi} from '../actions'
+import {asyncConnect} from 'redux-connect'
+import {get} from 'axios'
 
+@asyncConnect([{
+  key: 'api',
+  promise: () => {
+    console.log('fetching api/hello')
+    return get(`${global.window ? '' : 'http://localhost:3000'}/api/hello`)
+        .then(({data}) => {
+          console.log('fetched api/hello')
+          return data
+        })
+        .catch(err => console.error(err));
+  }
+}])
 class Other extends Component {
   static propTypes = {
-    callApi: T.func.isRequired,
-    hello: T.object
-  }
-
-  static fetchData = {
-    callApi
-  }
-
-  componentWillMount () {
-    const {callApi} = this.props
-    callApi()
+    api: T.object.isRequired
   }
 
   render () {
@@ -26,12 +28,4 @@ class Other extends Component {
   }
 }
 
-const mapStateToProps = ({api}) => ({
-  api
-})
-
-const mapDispatchToProps = {
-  callApi
-}
-
-export default connect(mapStateToProps, mapDispatchToProps)(Other)
+export default Other
